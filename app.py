@@ -5,7 +5,6 @@ from PIL import Image
 from threading import Thread
 from typing import Generator
 from pathlib import Path
-from gradio.utils import NamedString
 import zipfile
 import tempfile
 import traceback
@@ -517,7 +516,7 @@ def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, t
 
 @torch.inference_mode()
 def process_batch_files(
-	files_list: list[NamedString],
+	files_list: list,
 	caption_type: str,
 	caption_length: str | int,
 	extra_options: list[str],
@@ -731,63 +730,6 @@ with gr.Blocks() as demo:
 			value="long",
 				)
 
-	with gr.Accordion("Extra Options", open=False):
-		extra_options = gr.CheckboxGroup(
-			choices=[
-				NAME_OPTION,
-				"Do NOT include information about people/characters that cannot be changed (like ethnicity, gender, etc), but do still include changeable attributes (like hair style).",
-				"Include information about lighting.",
-				"Include information about camera angle.",
-				"Include information about whether there is a watermark or not.",
-				"Include information about whether there are JPEG artifacts or not.",
-				"If it is a photo you MUST include information about what camera was likely used and details such as aperture, shutter speed, ISO, etc.",
-				"Do NOT include anything sexual; keep it PG.",
-				"Do NOT mention the image's resolution.",
-				"You MUST include information about the subjective aesthetic quality of the image from low to very high.",
-				"Include information on the image's composition style, such as leading lines, rule of thirds, or symmetry.",
-				"Do NOT mention any text that is in the image.",
-				"Specify the depth of field and whether the background is in focus or blurred.",
-				"If applicable, mention the likely use of artificial or natural lighting sources.",
-				"Do NOT use any ambiguous language.",
-				"Include whether the image is sfw, suggestive, or nsfw.",
-				"ONLY describe the most important elements of the image.",
-				"If it is a work of art, do not include the artist's name or the title of the work.",
-				"Identify the image orientation (portrait, landscape, or square) and aspect ratio if obvious.",
-				"""Use vulgar slang and profanity, such as (but not limited to) "fucking," "slut," "cock," etc.""",
-				"Do NOT use polite euphemisms—lean into blunt, casual phrasing.",
-				"Include information about the ages of any people/characters when applicable.",
-				"Mention whether the image depicts an extreme close-up, close-up, medium close-up, medium shot, cowboy shot, medium wide shot, wide shot, or extreme wide shot.",
-				"Do not mention the mood/feeling/etc of the image.",
-				"Explicitly specify the vantage height (eye-level, low-angle worm’s-eye, bird’s-eye, drone, rooftop, etc.).",
-				"If there is a watermark, you must mention it.",
-				"""Your response will be used by a text-to-image model, so avoid useless meta phrases like “This image shows…”, "You are looking at...", etc.""",
-			],
-			label="Select one or more",
-			elem_id="extra_options_checkboxes",
-		)
-		
-	name_input = gr.Textbox(label="Person / Character Name", visible=False)
-
-	with gr.Accordion("Generation settings", open=False):
-		with gr.Row():
-			with gr.Column(scale=1):
-				temperature_slider = gr.Slider(
-					minimum=0.0, maximum=2.0, value=0.6, step=0.05,
-					label="Temperature",
-					info="Higher values make the output more random, lower values make it more deterministic."
-				)
-			with gr.Column(scale=1):
-				top_p_slider = gr.Slider(
-					minimum=0.0, maximum=1.0, value=0.9, step=0.01,
-					label="Top-p"
-				)
-			with gr.Column(scale=1):
-				max_tokens_slider = gr.Slider(
-					minimum=1, maximum=2048, value=512, step=1,
-					label="Max New Tokens",
-					info="Maximum number of tokens to generate.  The model will stop generating if it reaches this limit."
-				)
-	
 	gr.HTML("<hr>")
 
 	with gr.Tabs() as tabs:
@@ -802,8 +744,8 @@ with gr.Blocks() as demo:
 					input_image_single = gr.Image(type="pil", label="Upload Image", height=400, elem_id="single_image_input")
 				
 				with gr.Column(scale=1):
-					initial_single_prompt = build_prompt(caption_type.value, caption_length.value, extra_options.value, name_input.value)
-					prompt_box_single = gr.Textbox(lines=4, label="Confirm or Edit Prompt", value=initial_single_prompt, interactive=True, elem_id="single_prompt_box")
+					# Initial prompt will be set by change handlers once extra_options is defined
+					prompt_box_single = gr.Textbox(lines=4, label="Confirm or Edit Prompt", value="Write a long detailed description for this image.", interactive=True, elem_id="single_prompt_box")
 					run_button_single = gr.Button("Caption", variant="primary")
 					output_caption_single = gr.Textbox(label="Generated Caption", lines=8, interactive=True, elem_id="single_output_box")
 		
@@ -847,6 +789,64 @@ with gr.Blocks() as demo:
 
 			
 	
+	# Extra Options and Generation Settings
+	with gr.Accordion("Extra Options", open=False):
+		extra_options = gr.CheckboxGroup(
+			choices=[
+				NAME_OPTION,
+				"Do NOT include information about people/characters that cannot be changed (like ethnicity, gender, etc), but do still include changeable attributes (like hair style).",
+				"Include information about lighting.",
+				"Include information about camera angle.",
+				"Include information about whether there is a watermark or not.",
+				"Include information about whether there are JPEG artifacts or not.",
+				"If it is a photo you MUST include information about what camera was likely used and details such as aperture, shutter speed, ISO, etc.",
+				"Do NOT include anything sexual; keep it PG.",
+				"Do NOT mention the image's resolution.",
+				"You MUST include information about the subjective aesthetic quality of the image from low to very high.",
+				"Include information on the image's composition style, such as leading lines, rule of thirds, or symmetry.",
+				"Do NOT mention any text that is in the image.",
+				"Specify the depth of field and whether the background is in focus or blurred.",
+				"If applicable, mention the likely use of artificial or natural lighting sources.",
+				"Do NOT use any ambiguous language.",
+				"Include whether the image is sfw, suggestive, or nsfw.",
+				"ONLY describe the most important elements of the image.",
+				"If it is a work of art, do not include the artist's name or the title of the work.",
+				"Identify the image orientation (portrait, landscape, or square) and aspect ratio if obvious.",
+				"""Use vulgar slang and profanity, such as (but not limited to) "fucking," "slut," "cock," etc.""",
+				"Do NOT use polite euphemisms—lean into blunt, casual phrasing.",
+				"Include information about the ages of any people/characters when applicable.",
+				"Mention whether the image depicts an extreme close-up, close-up, medium close-up, medium shot, cowboy shot, medium wide shot, wide shot, or extreme wide shot.",
+				"Do not mention the mood/feeling/etc of the image.",
+				"Explicitly specify the vantage height (eye-level, low-angle worm's-eye, bird's-eye, drone, rooftop, etc.).",
+				"If there is a watermark, you must mention it.",
+				"""Your response will be used by a text-to-image model, so avoid useless meta phrases like "This image shows…", "You are looking at...", etc.""",
+			],
+			label="Select one or more",
+			elem_id="extra_options_checkboxes",
+		)
+		
+	name_input = gr.Textbox(label="Person / Character Name", visible=False)
+
+	with gr.Accordion("Generation settings", open=False):
+		with gr.Row():
+			with gr.Column(scale=1):
+				temperature_slider = gr.Slider(
+					minimum=0.0, maximum=2.0, value=0.6, step=0.05,
+					label="Temperature",
+					info="Higher values make the output more random, lower values make it more deterministic."
+				)
+			with gr.Column(scale=1):
+				top_p_slider = gr.Slider(
+					minimum=0.0, maximum=1.0, value=0.9, step=0.01,
+					label="Top-p"
+				)
+			with gr.Column(scale=1):
+				max_tokens_slider = gr.Slider(
+					minimum=1, maximum=2048, value=512, step=1,
+					label="Max New Tokens",
+					info="Maximum number of tokens to generate.  The model will stop generating if it reaches this limit."
+				)
+
 	# Documentation section
 	with gr.Accordion("Documentation", open=False):
 		gr.HTML(DESCRIPTION)
