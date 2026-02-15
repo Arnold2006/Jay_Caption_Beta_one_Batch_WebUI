@@ -147,7 +147,7 @@ TITLE = f"""<style>
   <img src="{LOGO_SRC}" alt="JoyCaption logo">
   <div>
     <h1>JoyCaption <span style="font-weight:400">Beta&nbsp;One</span></h1>
-    <p>Image-captioning Tool &nbsp;|&nbsp; build 1.004</p>
+    <p>Image-captioning Tool &nbsp;|&nbsp; build 1.008</p>
   </div>
 </div>
 <hr>"""
