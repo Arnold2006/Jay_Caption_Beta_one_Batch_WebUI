@@ -6,6 +6,8 @@ A powerful, user-friendly web interface for the JoyCaption image captioning mode
 ![Python](https://img.shields.io/badge/python-3.10+-green.svg)
 ![Gradio](https://img.shields.io/badge/gradio-5.24+-orange.svg)
 
+![JoyCaption Screenshot](gradio-app.jpg)
+
 ## ✨ Features
 
 ### 🖼️ Image Captioning
