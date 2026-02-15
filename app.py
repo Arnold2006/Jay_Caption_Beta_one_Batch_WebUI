@@ -114,6 +114,33 @@ TITLE = f"""<style>
     font-weight: 500;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   }}
+  
+  /* GPU and CPU Monitor Styles */
+  #gpu_monitor_display, #cpu_monitor_display {{
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    font-size: 0.85em !important;
+    line-height: 1.5 !important;
+  }}
+  
+  #gpu_monitor_display textarea, #cpu_monitor_display textarea {{
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+    resize: none !important;
+    overflow: hidden !important;
+    color: #e2e8f0 !important;
+    padding: 10px 12px !important;
+    white-space: pre !important;
+    word-wrap: normal !important;
+  }}
+  
+  #gpu_monitor_display textarea {{
+    border-left: 3px solid #667eea !important;
+    background: linear-gradient(135deg, #667eea08 0%, #2d3748 100%) !important;
+  }}
+  
+  #cpu_monitor_display textarea {{
+    border-left: 3px solid #f5576c !important;
+    background: linear-gradient(135deg, #f5576c08 0%, #2d3748 100%) !important;
+  }}
 </style>
 
 <div class="joy-header">
@@ -277,8 +304,11 @@ NAME_OPTION = "If there is a person/character in the image you must refer to the
 
 
 
+MODEL_PATH = "fancyfeast/llama-joycaption-beta-one-hf-llava"
+
 g_processor = None
 g_model: LlavaForConditionalGeneration | None = None
+g_model_type: str | None = None  # Track which model is loaded
 
 def format_error(message: str) -> str:
 	"""Format an error message for display in the UI."""
@@ -298,9 +328,95 @@ def show_global_error(message: str):
 def hide_global_error():
 	return gr.update(value="", visible=False)
 
-def load_model(status: gr.HTML | None = None):
+def get_gpu_info():
+	"""Get GPU memory usage information in plain text format."""
+	if not torch.cuda.is_available():
+		return "❌ No CUDA GPU"
+	
+	try:
+		gpu_id = 0
+		props = torch.cuda.get_device_properties(gpu_id)
+		total_memory = props.total_memory / (1024**3)  # Convert to GB
+		allocated = torch.cuda.memory_allocated(gpu_id) / (1024**3)
+		usage_percent = int(allocated / total_memory * 100)
+		
+		# Create progress bar
+		bar_length = 20
+		filled = int(bar_length * usage_percent / 100)
+		bar = '●' * filled + '○' * (bar_length - filled)
+		
+		# Try to get GPU utilization and temperature
+		gpu_util = "N/A"
+		gpu_temp = "N/A"
+		try:
+			import pynvml
+			pynvml.nvmlInit()
+			handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+			util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+			gpu_util = f"{util.gpu}%"
+			try:
+				temp = pynvml.nvmlDeviceGetTemperature(handle, 0)
+				gpu_temp = f"{temp}°C"
+			except:
+				pass
+			pynvml.nvmlShutdown()
+		except:
+			pass
+		
+		# Shorten GPU name if too long
+		gpu_name = props.name
+		if len(gpu_name) > 28:
+			gpu_name = gpu_name[:25] + "..."
+		
+		# Format as plain text - compact
+		info_text = f"""🖥️ {gpu_name}
+├ VRAM: {allocated:.1f}/{total_memory:.1f}GB
+[{bar}] {usage_percent}%
+└ Temp: {gpu_temp} | Load: {gpu_util}"""
+		
+		return info_text
+	except Exception as e:
+		return f"❌ Error: {str(e)}"
+
+def get_cpu_info():
+	"""Get CPU and RAM usage information."""
+	try:
+		import psutil
+		
+		# CPU info
+		cpu_count_physical = psutil.cpu_count(logical=False)
+		cpu_count_logical = psutil.cpu_count(logical=True)
+		cpu_percent = psutil.cpu_percent(interval=0.1)
+		
+		# RAM info
+		ram = psutil.virtual_memory()
+		ram_used = ram.used / (1024**3)
+		ram_total = ram.total / (1024**3)
+		ram_percent = int(ram.percent)
+		
+		# Create progress bar
+		bar_length = 20
+		filled = int(bar_length * ram_percent / 100)
+		bar = '●' * filled + '○' * (bar_length - filled)
+		
+		info_text = f"""💻 CPU: {cpu_count_physical}C/{cpu_count_logical}T
+├ RAM: {ram_used:.1f}/{ram_total:.1f}GB
+[{bar}] {ram_percent}%
+└ Usage: {cpu_percent:.0f}%"""
+		
+		return info_text
+	except ImportError:
+		return "⚠️ Install psutil:\npip install psutil"
+	except Exception as e:
+		return f"❌ Error: {str(e)}"
+
+def load_model(model_type: str = "BF16 (Higher Quality)", status: gr.HTML | None = None):
 	"""Load the model and processor if not already loaded."""
-	global g_processor, g_model
+	global g_processor, g_model, g_model_type
+	
+	# Determine if we need to reload the model
+	needs_reload = g_model is None or g_model_type != model_type
+	
 	if g_processor is None:
 		print("Loading processor...")
 		if status is not None:
@@ -326,24 +442,52 @@ def load_model(status: gr.HTML | None = None):
 			yield {global_error: show_global_error("Critical error: Model processor could not be loaded")}
 			return
 	
-	if g_model is None:
-		print("Loading model...")
+	if needs_reload:
+		if g_model is not None:
+			print(f"Switching from {g_model_type} to {model_type}...")
+			g_model = None
+			gc.collect()
+			torch.cuda.empty_cache()
+		
+		print(f"Loading {model_type} model...")
 		if status is not None:
-			yield {status: format_info("Loading model weights...")}
+			yield {status: format_info(f"Loading {model_type} model weights...")}
 		
 		gc.collect()
 		torch.cuda.empty_cache()
 
 		try:
-			g_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="bfloat16", device_map=0)
-			assert isinstance(g_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(g_model)}"
-			if _HAS_LIGER:
-				try:
-					apply_liger_kernel_to_llama(model=g_model.language_model)  # Meow
-				except Exception as e:
-					print(f"[WARN] Liger kernel could not be applied: {e}")
+			if model_type == "BF16 (Higher Quality)":
+				g_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="bfloat16", device_map=0)
+				assert isinstance(g_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(g_model)}"
+				if _HAS_LIGER:
+					try:
+						apply_liger_kernel_to_llama(model=g_model.language_model)  # Meow
+					except Exception as e:
+						print(f"[WARN] Liger kernel could not be applied: {e}")
+			
+			elif model_type == "NF4 4-bit (Lower VRAM)":
+				from transformers import BitsAndBytesConfig
+				
+				# Configure NF4 quantization - skip vision components to avoid dtype issues
+				nf4_config = BitsAndBytesConfig(
+					load_in_4bit=True,
+					bnb_4bit_quant_type="nf4",
+					bnb_4bit_use_double_quant=True,
+					bnb_4bit_compute_dtype=torch.bfloat16,
+					llm_int8_skip_modules=["vision_tower", "multi_modal_projector"]  # Don't quantize vision components
+				)
+				
+				g_model = LlavaForConditionalGeneration.from_pretrained(
+					MODEL_PATH,
+					quantization_config=nf4_config,
+					device_map=0,
+					torch_dtype=torch.bfloat16
+				)
+				assert isinstance(g_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(g_model)}"
 
 			g_model.eval()
+			g_model_type = model_type
 			# Hide any global error when model loads successfully
 			yield {global_error: hide_global_error()}
 		except Exception as e:
@@ -435,7 +579,7 @@ def preprocess_image(image: Image.Image) -> Image.Image:
 
 
 @torch.no_grad()
-def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, top_p: float, max_new_tokens: int) -> Generator[dict, None, None]:
+def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, top_p: float, max_new_tokens: int, model_selection: str) -> Generator[dict, None, None]:
 	# Hide any previous global errors
 	yield {global_error: hide_global_error()}
 
@@ -443,7 +587,7 @@ def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, t
 		yield {single_status_output: format_error("No image selected for captioning. Please upload an image."), output_caption_single: None}
 		return
 	
-	yield from load_model(status=single_status_output)
+	yield from load_model(model_type=model_selection, status=single_status_output)
 	gc.collect()
 	torch.cuda.empty_cache()
 
@@ -477,6 +621,7 @@ def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, t
 
 		# Process the inputs
 		inputs = g_processor(text=[convo_string], images=[input_image], return_tensors="pt").to('cuda')
+		# Vision tower is always bfloat16 (skipped from quantization in NF4)
 		inputs['pixel_values'] = inputs['pixel_values'].to(torch.bfloat16)
 
 		streamer = TextIteratorStreamer(g_processor.tokenizer, timeout=10.0, skip_prompt=True, skip_special_tokens=True)
@@ -527,6 +672,7 @@ def process_batch_files(
 	num_workers: int,
 	batch_size: int,
 	output_folder: str,
+	model_selection: str,
 	progress = gr.Progress(track_tqdm=False),
 ) -> Generator[dict, None, None]:
 	# Hide any previous global errors
@@ -559,7 +705,7 @@ def process_batch_files(
 		yield {batch_progress_bar: gr.update(visible=False), batch_status_output: format_error(f"Cannot write to output folder: {output_path}. Error: {e}"), batch_zip_output: None}
 		return
 	
-	yield from load_model(status=batch_status_output)
+	yield from load_model(model_type=model_selection, status=batch_status_output)
 	gc.collect()
 	torch.cuda.empty_cache()
 
@@ -579,7 +725,7 @@ def process_batch_files(
 				vision_dtype = g_model.model.vision_tower.vision_model.embeddings.patch_embedding.weight.dtype
 				vision_device = g_model.model.vision_tower.vision_model.embeddings.patch_embedding.weight.device
 			else:
-				# Ultimate fallback: use bfloat16
+				# Ultimate fallback: vision tower is always bfloat16 (not quantized)
 				print("[WARN] Could not detect vision tower structure, using bfloat16 on cuda:0")
 				vision_dtype = torch.bfloat16
 				vision_device = torch.device('cuda:0')
@@ -724,6 +870,38 @@ with gr.Blocks() as demo:
 	gr.HTML(TITLE)
 
 	global_error = gr.HTML(visible=False)
+	
+	# Model selection and system monitors
+	with gr.Row():
+		with gr.Column(scale=1):
+			model_selection = gr.Dropdown(
+				choices=["BF16 (Higher Quality)", "NF4 4-bit (Lower VRAM)"],
+				value="BF16 (Higher Quality)",
+				label="Model Type",
+				info="BF16: ~24GB VRAM, highest quality | NF4 4-bit: ~6-8GB VRAM, good quality"
+			)
+		
+		with gr.Column(scale=1):
+			with gr.Row():
+				gpu_monitor_display = gr.Textbox(
+					value=get_gpu_info(),
+					label="🖥️ GPU Monitor",
+					interactive=False,
+					lines=4,
+					max_lines=4,
+					elem_id="gpu_monitor_display"
+				)
+				cpu_monitor_display = gr.Textbox(
+					value=get_cpu_info(),
+					label="💻 CPU Monitor",
+					interactive=False,
+					lines=4,
+					max_lines=4,
+					elem_id="cpu_monitor_display"
+				)
+	
+	# Hidden timer for system monitor updates
+	system_monitor_timer = gr.Timer(value=2, active=True)
 
 	with gr.Row():
 		caption_type = gr.Dropdown(
@@ -870,6 +1048,13 @@ with gr.Blocks() as demo:
 		gr.HTML(DESCRIPTION)
 	
 	# Wire up events
+	
+	# Auto-update system monitors with timer (every 2 seconds)
+	system_monitor_timer.tick(
+		fn=lambda: (get_gpu_info(), get_cpu_info()),
+		inputs=[],
+		outputs=[gpu_monitor_display, cpu_monitor_display]
+	)
 
 	# Show name input box only when the name option is selected
 	extra_options.change(toggle_name_box, inputs=[extra_options], outputs=[name_input])
@@ -885,14 +1070,14 @@ with gr.Blocks() as demo:
 	# Handle single image captioning
 	run_button_single.click(
 		chat_joycaption,
-		inputs=[input_image_single, prompt_box_single, temperature_slider, top_p_slider, max_tokens_slider],
+		inputs=[input_image_single, prompt_box_single, temperature_slider, top_p_slider, max_tokens_slider, model_selection],
 		outputs=[single_status_output, output_caption_single, global_error],
 	)
 
 	# Handle batch processing
 	run_button_batch.click(
 		process_batch_files,
-		inputs=[input_files_batch, caption_type, caption_length, extra_options, name_input, temperature_slider, top_p_slider, max_tokens_slider, num_workers_slider, batch_size_slider, output_folder_input],
+		inputs=[input_files_batch, caption_type, caption_length, extra_options, name_input, temperature_slider, top_p_slider, max_tokens_slider, num_workers_slider, batch_size_slider, output_folder_input, model_selection],
 		outputs=[batch_progress_bar, batch_status_output, batch_zip_output, global_error],
 	)
 
