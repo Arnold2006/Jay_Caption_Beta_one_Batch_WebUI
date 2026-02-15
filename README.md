@@ -1,6 +1,3 @@
-# JoyCaption - Advanced Image Captioning Tool
-![JoyCaption Screenshot](gradio-app.jpg)
-
 # JoyCaption Beta One - Batch Processing WebUI
 
 A powerful, user-friendly web interface for the JoyCaption image captioning model with advanced batch processing capabilities and real-time system monitoring.
@@ -49,14 +46,17 @@ A powerful, user-friendly web interface for the JoyCaption image captioning mode
 ### 🎨 User Interface
 - Clean, modern Gradio interface
 - Integrated progress tracking for batch operations
+- **Editable prompts on both Single Image and Batch Processing tabs**
 - Customizable caption length (any/very short/short/medium-length/long/very long)
 - Extra options: subject focus, custom names, and more
 - Advanced generation settings (temperature, top-p, max tokens)
 - Organized accordion sections for better workflow
+- Browser tab title: "Jay-Captioning"
 
 ### 🔧 Batch Processing Features
 - Drag-and-drop file upload
 - Custom output folder selection
+- **Editable prompt box** - Review and customize prompts before batch processing
 - Adjustable DataLoader workers (CPU processes)
 - Configurable batch size for GPU optimization
 - Real-time progress bar
@@ -124,9 +124,11 @@ A powerful, user-friendly web interface for the JoyCaption image captioning mode
 2. Navigate to the **Single Image Processing** tab
 3. Upload an image
 4. Choose caption type and length
-5. (Optional) Add extra options or edit the prompt
+5. **(Optional)** Add extra options or edit the prompt in the **Confirm or Edit Prompt** box
 6. Click **Caption** to generate
 7. Copy or download the generated caption
+
+**Note:** The prompt automatically updates when you change caption type, length, or extra options, but you can manually edit it before generating.
 
 ### Batch Processing
 
@@ -134,10 +136,13 @@ A powerful, user-friendly web interface for the JoyCaption image captioning mode
 2. Navigate to the **Batch Processing** tab
 3. Drag and drop multiple images (PNG, JPEG, WEBP)
 4. Specify the **Output Folder Path** where caption .txt files will be saved
-5. Adjust **DataLoader Workers** and **Batch Size** based on your hardware
-6. Click **Start Batch Process**
-7. Monitor progress with the real-time progress bar
-8. Caption files will be saved to your specified folder
+5. **(Optional)** Review and edit the prompt in the **Confirm or Edit Prompt** box
+6. Adjust **DataLoader Workers** and **Batch Size** based on your hardware
+7. Click **Start Batch Process**
+8. Monitor progress with the real-time progress bar
+9. Caption files will be saved to your specified folder
+
+**Note:** The prompt automatically updates when you change caption type, length, or extra options, but you can manually edit it before processing.
 
 ### System Monitoring
 
@@ -146,6 +151,16 @@ The GPU and CPU monitors update automatically every 2 seconds, showing:
 - Temperature (requires nvidia-ml-py)
 - GPU and CPU load percentages
 - Visual progress bars
+
+### Shared Settings
+
+The following settings are shared between both Single Image and Batch Processing tabs:
+- **Caption Type & Length** - Select once, applies to both tabs
+- **Extra Options** - Including the "Person / Character Name" input
+- **Generation Settings** - Temperature, top-p, and max tokens
+- **Model Selection** - BF16 or NF4 4-bit
+
+Both tabs have their own **Confirm or Edit Prompt** boxes that update automatically based on your selections, but can be manually edited independently.
 
 ## ⚙️ Configuration
 
